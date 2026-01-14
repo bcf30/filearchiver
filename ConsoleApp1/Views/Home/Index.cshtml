@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>file compression tool</title>
+</head>
+<body>
+    <h1>file compression tool</h1>
+    
+    <h2>1. compress file (singular)</h2>
+    <form id="compressForm" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <select name="format">
+            <option value="zip">zip</option>
+            <option value="7z">7z</option>
+            <option value="tar">tar</option>
+            <option value="zst">zstd</option>
+            <option value="br">brotli</option>
+        </select>
+        <button type="submit">compress</button>
+    </form>
+    <div id="compressResult"></div>
+
+    <hr>
+
+    <h2>2. compress multiple files/folders</h2>
+    <form id="compressMultipleForm" enctype="multipart/form-data">
+        <label>
+            <input type="radio" name="inputType" value="files" checked onchange="toggleInputType()"> files
+        </label>
+        <label>
+            <input type="radio" name="inputType" value="folder" onchange="toggleInputType()"> folder
+        </label>
+        <br><br>
+        <input type="file" id="filesInput" name="files" multiple required>
+        <input type="file" id="folderInput" name="files" webkitdirectory style="display:none;">
+        <select name="format">
+            <option value="zip">zip</option>
+            <option value="7z">7z</option>
+            <option value="tar">tar</option>
+            <option value="zst">zstd</option>
+            <option value="br">brotli</option>
+        </select>
+        <button type="submit">compress</button>
+    </form>
+    <div id="compressMultipleResult"></div>
+
+    <hr>
+
+    <h2>3. extract archive</h2>
+    <form id="extractForm" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <button type="submit">extract</button>
+    </form>
+    <div id="extractResult"></div>
+
+    <hr>
+
+    <h2>4. convert archive</h2>
+    <form id="convertForm" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <select name="targetFormat">
+            <option value="zip">zip</option>
+            <option value="7z">7z</option>
+            <option value="tar">tar</option>
+            <option value="zst">zstd</option>
+            <option value="br">brotli</option>
+        </select>
+        <button type="submit">convert</button>
+    </form>
+    <div id="convertResult"></div>
+
+    <hr>
+
+    <h2>5. calculate hash</h2>
+    <form id="hashForm" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <select name="algorithm">
+            <option value="md5">md5</option>
+            <option value="sha1">sha1</option>
+            <option value="sha256">sha256</option>
+            <option value="sha512">sha512</option>
+            <option value="crc32">crc32</option>
+        </select>
+        <button type="submit">calculate</button>
+    </form>
+    <div id="hashResult"></div>
+
+    <hr>
+
+    <h2>6. verify hash</h2>
+    <form id="verifyForm" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <select name="algorithm">
+            <option value="md5">md5</option>
+            <option value="sha1">sha1</option>
+            <option value="sha256">sha256</option>
+            <option value="sha512">sha512</option>
+            <option value="crc32">crc32</option>
+        </select>
+        <input type="text" name="expectedHash" placeholder="expected hash" required>
+        <button type="submit">verify</button>
+    </form>
+    <div id="verifyResult"></div>
+
+    <script>
+        function toggleInputType() {
+            var inputType = document.querySelector('input[name="inputType"]:checked').value;
+            var filesInput = document.getElementById('filesInput');
+            var folderInput = document.getElementById('folderInput');
+            
+            if (inputType === 'files') {
+                filesInput.style.display = 'inline';
+                folderInput.style.display = 'none';
+                filesInput.required = true;
+                folderInput.required = false;
+                folderInput.removeAttribute('required');
+            } else {
+                filesInput.style.display = 'none';
+                folderInput.style.display = 'inline';
+                filesInput.required = false;
+                filesInput.removeAttribute('required');
+                folderInput.required = true;
+            }
+        }
+
+        function setupForm(formId, endpoint, resultId, isDownload = true) {
+            document.getElementById(formId).onsubmit = async function(e) {
+                e.preventDefault();
+                
+                // Show loading message immediately
+                document.getElementById(resultId).innerHTML = '<p>loading...</p>';
+                
+                var formData = new FormData(this);
+                var params = new URLSearchParams();
+                
+                if (formId === 'compressMultipleForm') {
+                    var inputType = document.querySelector('input[name="inputType"]:checked').value;
+                    var activeInput = inputType === 'files' ? document.getElementById('filesInput') : document.getElementById('folderInput');
+                    
+                    // Clear all existing files from formData first
+                    formData.delete('files');
+                    
+                    // Add files from the active input only
+                    for (var i = 0; i < activeInput.files.length; i++) {
+                        formData.append('files', activeInput.files[i]);
+                    }
+                    
+                    console.log('Files to upload:', activeInput.files.length);
+                }
+                
+                for (var pair of formData.entries()) {
+                    if (pair[0] !== 'file' && pair[0] !== 'files') {
+                        params.append(pair[0], pair[1]);
+                    }
+                }
+                
+                var url = endpoint + (params.toString() ? '?' + params.toString() : '');
+                
+                try {
+                    var response = await fetch(url, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        if (isDownload) {
+                            var contentType = response.headers.get('content-type');
+                            if (contentType && contentType.includes('application/json')) {
+                                var data = await response.json();
+                                if (data.files) {
+                                    var html = '<p>extracted ' + data.files.length + ' files:</p>';
+                                    data.files.forEach(function(file, index) {
+                                        var blob = new Blob([Uint8Array.from(atob(file.data), c => c.charCodeAt(0))]);
+                                        var url = window.URL.createObjectURL(blob);
+                                        html += '<p><a href="' + url + '" download="' + file.name + '">' + file.name + '</a> (' + file.size + ' bytes)</p>';
+                                    });
+                                    
+                                    if (data.zipData) {
+                                        var zipBlob = new Blob([Uint8Array.from(atob(data.zipData), c => c.charCodeAt(0))]);
+                                        var zipUrl = window.URL.createObjectURL(zipBlob);
+                                        html += '<p><strong><a href="' + zipUrl + '" download="' + data.zipName + '">download all files as zip (lol)</a></strong></p>';
+                                    }
+                                    
+                                    document.getElementById(resultId).innerHTML = html;
+                                } else {
+                                    document.getElementById(resultId).innerHTML = '<p>' + data.message + '</p>';
+                                }
+                            } else {
+                                var blob = await response.blob();
+                                var filename = 'download';
+                                
+                                var contentDisposition = response.headers.get('content-disposition');
+                                if (contentDisposition) {
+                                    var filenameMatch = contentDisposition.match(/filename\*?=['"]?([^'";]+)['"]?/);
+                                    if (filenameMatch) {
+                                        filename = decodeURIComponent(filenameMatch[1]);
+                                    }
+                                }
+                                
+                                if (filename === 'download') {
+                                    var suggestedFilename = response.headers.get('x-suggested-filename');
+                                    if (suggestedFilename) {
+                                        filename = suggestedFilename;
+                                    }
+                                }
+                                
+                                var downloadUrl = window.URL.createObjectURL(blob);
+                                var a = document.createElement('a');
+                                a.href = downloadUrl;
+                                a.download = filename;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                window.URL.revokeObjectURL(downloadUrl);
+                                
+                                document.getElementById(resultId).innerHTML = '<p>success - downloaded as: ' + filename + '</p>';
+                            }
+                        } else {
+                            var data = await response.json();
+                            if (data.hash) {
+                                document.getElementById(resultId).innerHTML = '<p>hash: ' + data.hash + '</p>';
+                            } else if (data.valid !== undefined) {
+                                var status = data.valid ? 'valid' : 'invalid';
+                                document.getElementById(resultId).innerHTML = '<p>status: ' + status + '<br>expected: ' + data.expected + '<br>actual: ' + data.actual + '</p>';
+                            }
+                        }
+                    } else {
+                        var text = await response.text();
+                        document.getElementById(resultId).innerHTML = '<p>error: ' + text + '</p>';
+                    }
+                } catch (err) {
+                    document.getElementById(resultId).innerHTML = '<p>error: ' + err.message + '</p>';
+                }
+            };
+        }
+
+        setupForm('compressForm', '/Home/Compress', 'compressResult');
+        setupForm('compressMultipleForm', '/Home/CompressMultiple', 'compressMultipleResult');
+        setupForm('extractForm', '/Home/Extract', 'extractResult');
+        setupForm('convertForm', '/Home/Convert', 'convertResult');
+        setupForm('hashForm', '/Home/Hash', 'hashResult', false);
+        setupForm('verifyForm', '/Home/VerifyHash', 'verifyResult', false);
+    </script>
+</body>
+</html>
